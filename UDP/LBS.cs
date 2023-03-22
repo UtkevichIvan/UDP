@@ -2,8 +2,8 @@
 
 public struct LBS
 {
-    public int MCC { get; set; }
-    public int MNC { get; set; }   
-    public int LAC { get; set;}
-    public int CID { get; set;}
+    public int Mcc { get; set; }
+    public int Mnc { get; set; }   
+    public int Lac { get; set;}
+    public int Cid { get; set;}
 }

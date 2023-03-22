@@ -6,53 +6,42 @@ namespace UDP;
 
 public class LbsService
 {
-    private static LbsService? _instance;
-    private readonly Dictionary<LBS, PointD> _towers;
+    private static readonly Lazy<LbsService> _instance = new Lazy<LbsService>(() => new LbsService());
+    private readonly Dictionary<LBS, LbsCoordinates> _towers;
 
     private LbsService()
     {
-        _towers = new Dictionary<LBS, PointD>();
+        _towers = new Dictionary<LBS, LbsCoordinates>();
         ReadFile();
     }
 
-    public static LbsService GetInstance()
+    public static LbsService Instance()
     {
-        _instance ??= new LbsService();
-
-        return _instance;
+        return _instance.Value;
     }
 
-    public LBSData Find (double longitude, double lat)
+    public LbsCoordinates Find (double longitude, double lat)
     {
         var min = double.MaxValue;
-        var resMcc = 0;
-        var resMnc = 0;
-        var resLac = 0;
-        var resCid = 0;
-        var resLong = 0.0;
-        var resLat = 0.0;
+        var result = new LbsCoordinates();
         foreach (var tower in _towers)
         {
-            if ((tower.Value.Lat - lat) * (tower.Value.Lat - lat) +
-                (tower.Value.Long - longitude) * (tower.Value.Long - longitude) < min)
+            var towerLat = tower.Value.Point.Lat;
+            var towerLong = tower.Value.Point.Long;
+            if ((towerLat - lat) * (towerLat - lat) + (towerLong - longitude) * (towerLong - longitude) < min)
             {
-                min = (tower.Value.Lat - lat) * (tower.Value.Lat - lat) +
-                      (tower.Value.Long - longitude) * (tower.Value.Long - longitude);
-                resCid = tower.Key.CID;
-                resLac = tower.Key.LAC;
-                resMnc = tower.Key.MNC;
-                resMcc = tower.Key.MCC;
-                resLong = tower.Value.Long;
-                resLat = tower.Value.Lat;
+                min = (towerLat - lat) * (towerLat - lat) + (towerLong - longitude) * (towerLong - longitude);
+                result.Point = new PointD(){ Long = towerLong, Lat = towerLat};
+                result.Lbs = new LBS(){ Cid = tower.Key.Cid, Lac = tower.Key.Lac, Mcc = tower.Key.Mcc, Mnc = tower.Key.Mnc };
             }
         }
 
-        return new LBSData{ MCC = resMcc, MNC = resMnc, LAC = resLac, CID = resCid, Long = resLong, Lat = resLat};
+        return result;
     }
 
     public PointD Get(LBS lbs)
     {
-        return _towers[lbs];
+        return _towers[lbs].Point;
     }
 
     private void ReadFile()
@@ -121,10 +110,17 @@ public class LbsService
                     var cid = int.Parse(words[4]);
                     var longitude = double.Parse(words[6], new NumberFormatInfo { NumberDecimalSeparator = "." });
                     var lat = double.Parse(words[7], new NumberFormatInfo { NumberDecimalSeparator = "." });
-                    _towers.Add(new LBS { CID = cid, LAC = lac, MCC = mcc, MNC = mnc}, new PointD{Long = longitude, Lat = lat});
+                    var lbs = new LBS { Cid = cid, Lac = lac, Mcc = mcc, Mnc = mnc };
+                    var point = new PointD { Long = longitude, Lat = lat };
+                    _towers.Add(lbs, new LbsCoordinates { Lbs = lbs, Point = point});
                 }
             }
 
+        }
+        catch (IOException ex)
+        {
+            Console.WriteLine(ex.Message);
+            return;
         }
         catch (Exception ex)
         {

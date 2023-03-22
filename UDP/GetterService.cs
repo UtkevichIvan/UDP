@@ -5,30 +5,58 @@ namespace UDP;
 
 public class GetterService : BackgroundService
 {
-    private readonly IHostApplicationLifetime _lifetime;
-
+    private readonly List<GpsLbs> _way = new List<GpsLbs>();
     private readonly ILogger<GetterService> _logger;
 
-    public GetterService(ILogger<GetterService> logger, IHostApplicationLifetime lifetime)
+    public GetterService(ILogger<GetterService> logger)
     {
         _logger = logger;
-        _lifetime = lifetime;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        if (!await WaitForAppStartup(_lifetime, stoppingToken))
-            return;
-
         try
         {
             using var receiver = new UdpClient(22220);
 
+            int i = 0;
             while (!stoppingToken.IsCancellationRequested)
             {
                 var result = await receiver.ReceiveAsync(stoppingToken);
-                var message = Encoding.UTF8.GetString(result.Buffer);
-                Console.WriteLine(message);
+                if (result.Buffer.Length != 0)
+                {
+                    var message = Encoding.UTF8.GetString(result.Buffer);
+                    var words = message.Split(' ');
+                    if (int.Parse(words[2]) >= 3 )
+                    {
+                        _way.Add(new GpsLbs()
+                        {
+                            Time = words[3],
+                            AmountSatellite = int.Parse(words[2]),
+                            Point = new PointD(){Lat = double.Parse(words[0]) , Long = double.Parse(words[1])}
+                        });
+                        Console.WriteLine(_way[i].Point.Lat + " " + _way[i].Point.Long + 
+                                          ' ' + _way[i].AmountSatellite + ' ' + _way[i].Time);
+                        i++;
+                    }
+                    else
+                    {
+                        var lbs = LbsService.Instance();
+                        var lbsCoord = lbs.Find(double.Parse(words[1]), double.Parse(words[0]));
+                        _way.Add(new GpsLbs()
+                        {
+                            Time = words[3],
+                            AmountSatellite = int.Parse(words[2]),
+                            Point = lbsCoord.Point,
+                            Lbs = lbsCoord.Lbs
+                        });
+                        Console.WriteLine(_way[i].Point.Lat + " " + _way[i].Point.Long + ' ' +
+                                          _way[i].AmountSatellite + " " +_way[i].Lbs.Cid + " " +
+                                          _way[i].Lbs.Lac + " " + _way[i].Lbs.Mcc + " " +
+                                          _way[i].Lbs.Mnc + ' ' + _way[i].Time);
+                        i++;
+                    }
+                }
             }
         }
         catch (OperationCanceledException ex)
@@ -39,18 +67,5 @@ public class GetterService : BackgroundService
         {
             _logger.LogError(ex.Message);
         }
-    }
-
-    private static async Task<bool> WaitForAppStartup(IHostApplicationLifetime lifetime, CancellationToken stoppingToken)
-    {
-        var startedSource = new TaskCompletionSource();
-        await using var reg1 =  lifetime.ApplicationStarted.Register(() => startedSource.SetResult());
-
-        var cancelledSource = new TaskCompletionSource();
-        await using var reg2 = stoppingToken.Register(() => cancelledSource.SetResult());
-
-        var completedTask = await Task.WhenAny(startedSource.Task, cancelledSource.Task).ConfigureAwait(false);
-
-        return completedTask == startedSource.Task;
     }
 }
